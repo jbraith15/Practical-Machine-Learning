@@ -1,0 +1,126 @@
+---
+title: "Practical Machine Learning"
+author: "Joan Braithwaite"
+date: "March 30, 2016"
+output: html_document
+---
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+The goal of this project, is to predict the manner in which they did the exercise using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+
+```{r}
+rm(list = ls())
+if (!file.exists("pml-training.csv")) {
+  download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+}
+if (!file.exists("pml-testing.csv")) {
+  download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+}
+Test.data <- read.csv("pml-testing.csv", sep = ",", na.strings = c("", "NA"))
+Train.data <- read.csv("pml-training.csv", sep = ",", na.strings = c("", "NA"))
+```
+
+# Prepare the data
+```{r}
+# Remove columns with NAs.
+features <- names(Test.data[,colSums(is.na(Test.data)) == 0])[8:59]
+
+# Only use features used in Test.data cases.
+Train.data <- Train.data[,c(features,"classe")]
+Test.data <- Test.data[,c(features,"problem_id")]
+```
+
+# Building & Identifying the best model
+
+## The goal of this project is to predict the manner in which they did the exercise. So my process is to: 
+
+### 1) create a training and test set of data.
+### 2) try a few different models to see which one would provide the most accurate prediction. 
+### 3) cross-validation was used on each model (using a separate set of data) to check for overfitting. 
+### 4) use the one with the highest accurary to predict the values from the test data to be submitted for the class as part of this project.  
+
+# Create training and test data to verify model
+```{r}
+library(caret)
+
+set.seed(3433)
+
+library(AppliedPredictiveModeling)
+
+inTrain = createDataPartition(Train.data$classe, p = 0.75, list = F)
+training = Train.data[inTrain,]
+testing = Train.data[-inTrain,]
+```
+# Prediction with Decision Trees
+```{r}
+library(rpart)
+library(rattle)
+
+set.seed(12345)
+
+modFitDS <- rpart(classe ~ ., data=training, method="class")
+fancyRpartPlot(modFitDS)
+
+predictionsDS <- predict(modFitDS, testing, type = "class")
+cmtree <- confusionMatrix(predictionsDS, testing$classe)
+cmtree
+```
+
+# Prediction with Random Forests
+```{r}
+library(randomForest)
+set.seed(12345)
+
+modFitRF <- randomForest(classe ~ ., data=training)
+predictionRF <- predict(modFitRF, testing, type = "class")
+cmrf <- confusionMatrix(predictionRF, testing$classe)
+cmrf
+```
+# Prediction with Generalized Boosted Regression
+```{r}
+library(gbm)
+
+set.seed(12345)
+
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 1)
+
+gbmFit1 <- train(classe ~ ., data=training, method = "gbm",
+                 trControl = fitControl,
+                 verbose = FALSE)
+
+gbmFinMod1 <- gbmFit1$finalModel
+
+gbmPredTest <- predict(gbmFit1, newdata=testing)
+gbmAccuracyTest <- confusionMatrix(gbmPredTest, testing$classe)
+gbmAccuracyTest
+```
+# Overall Summary
+
+Random Forests gave an accuracy in the testing dataset of 99.89%, which was more accurate than 96.00% using Generalized Boosted Regression or 73.72% using Decision Trees. 
+
+The expected out-of-sample error is 100-99.89 = 0.11%.
+
+# Use the prediction model to predict 20 different test cases
+```{r}
+# Code to submit for test data
+predictionRF2 <- predict(modFitRF, Test.data, type = "class")
+predictionRF2
+```
